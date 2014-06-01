@@ -167,11 +167,11 @@ namespace mzmdbg
         private static GBCMMU _mmu = new GBCMMU(); // Memory Management Unit
 
         private static Dictionary<int, string> _decompilerStrings = new Dictionary<int, string>();
-        private static Dictionary<int, Delegate> _opTable = RegisterOpHandlers();
+        private static Dictionary<int, Action> _opTable = RegisterOpHandlers();
 
-        private static Dictionary<int, Delegate> RegisterOpHandlers()
+        private static Dictionary<int, Action> RegisterOpHandlers()
         {
-            Dictionary<int, Delegate> table = new Dictionary<int, Delegate>(); 
+            Dictionary<int, Action> table = new Dictionary<int, Action>(); 
             MethodInfo[] methodsInfos = typeof(GBCEmulator).GetMethods(BindingFlags.Static | BindingFlags.Public);
             foreach (var methodInfo in methodsInfos)
             {
@@ -187,8 +187,8 @@ namespace mzmdbg
                         MainForm.LogLine("Trying to overwrite opcode 0x{0:X2} handler with {1}, ignoring.", opcode, methodInfo.Name);
                         continue;
                     }
-                    
-                    table.Add(opcode, Expression.Lambda(Expression.Call(null, methodInfo)).Compile());
+
+                    table.Add(opcode, (Action)Delegate.CreateDelegate(typeof(Action), methodInfo));
                     _decompilerStrings.Add(opcode, (attr as Opcode)._decompilerString);
                 }
             }
@@ -1658,7 +1658,7 @@ namespace mzmdbg
         }
         
         [Opcode("RET !FZ", 0xC0)]
-        public static void RETFZ()
+        public static void RETNFZ()
         {
             if (GBCRegisters.IsFlagEnabled(Flags.Zero))
                 return;
@@ -1730,6 +1730,40 @@ namespace mzmdbg
             GBCRegisters.SP = (ushort)((GBCRegisters.SP - 2) & 0xFFFF);
             _mmu.WriteUint16(GBCRegisters.SP, GBCRegisters.PC);
             GBCRegisters.PC = 0;
+        }
+        
+        [Opcode("RET FZ", 0xC8)]
+        public static void RETFZ()
+        {
+            if (GBCRegisters.IsFlagEnabled(Flags.Zero))
+            {
+                GBCRegisters.PC = _mmu.ReadUint16(GBCRegisters.SP);
+                GBCRegisters.SP = (ushort)((GBCRegisters.SP + 2) & 0xFFFF);
+            }
+        }
+        
+        [Opcode("RET", 0xC9)]
+        public static void RET()
+        {
+            GBCRegisters.PC = _mmu.ReadUint16(GBCRegisters.SP);
+            GBCRegisters.SP = (ushort)((GBCRegisters.SP + 2) & 0xFFFF);
+        }
+        
+        [Opcode("JP FZ, &{0:X4}", 0xCA)]
+        public static void JPFZNN()
+        {
+            if (GBCRegisters.IsFlagEnabled(Flags.Zero))
+                GBCRegisters.PC = _mmu.ReadUint16(GBCRegisters.PC);
+            else
+                GBCRegisters.PC = (ushort)((GBCRegisters.PC + 2) & 0xFFFF);
+        }
+        
+        [Opcode("CB", 0xCB)]
+        public static void DispatchCBOpcode()
+        {
+            var i = _mmu.ReadByte(GBCRegisters.PC);
+            GBCRegisters.PC = (ushort)((GBCRegisters.PC + 1) & 0xFFFF);
+            _opTable[0xCB00 | i].Invoke();
         }
     }
 }
