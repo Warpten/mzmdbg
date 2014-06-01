@@ -30,13 +30,11 @@ namespace mzmdbg
     {
         public string _decompilerString;
         public int _byteValue;
-        public bool _isCB;
 
-        public Opcode(string decompiledString = "XX", byte byteValue = 0xFF, bool isCBOpcode = false)
+        public Opcode(string decompiledString = "XX", ushort byteValue = 0xFFFF)
         {
             _decompilerString = decompiledString;
             _byteValue = byteValue;
-            _isCB = isCBOpcode;
         }
     }
 
@@ -183,7 +181,7 @@ namespace mzmdbg
                         continue;
                 
                     var opcode = (attr as Opcode)._byteValue;
-                    //! TODO: CB opcodes
+                    // CB Opcodes are mapped as 0xCB<opcode>
                     if (table.ContainsKey(opcode))
                     {
                         MainForm.LogLine("Trying to overwrite opcode 0x{0:X2} handler with {1}, ignoring.", opcode, methodInfo.Name);
@@ -1675,6 +1673,63 @@ namespace mzmdbg
             GBCRegisters.C = _mmu.ReadByte(GBCRegisters.SP);
             GBCRegisters.B = _mmu.ReadByte((GBCRegisters.SP + 1) & 0xFFFF);
             GBCRegisters.SP = (ushort)((GBCRegisters.SP + 2) & 0xFFFF);
+        }
+        
+        [Opcode("JP NZ, &{0:X4}", 0xC2)]
+        public static void JPNZNN()
+        {
+            if (!GBCRegisters.IsFlagEnabled(Flags.Zero))
+                GBCRegisters.PC = _mmu.ReadUint16(GBCRegisters.PC);
+            else
+                GBCRegisters.PC = (ushort)((GBCRegisters.PC + 2) & 0xFFFF);
+        }
+        
+        [Opcode("JP &{0:X4}", 0xC3)]
+        public static void JPNN()
+        {
+            GBCRegisters.PC = _mmu.ReadUint16(GBCRegisters.PC);
+        }
+        
+        [Opcode("CALL !FZ, &{0:X4}", 0xC4)]
+        public static void CALLFZNN()
+        {
+            if (!GBCRegisters.IsFlagEnabled(Flags.Zero))
+            {
+                GBCRegisters.PC = (ushort)((GBCRegisters.PC - 2) & 0xFFFF);
+                _mmu.WriteUint16(GBCRegisters.SP, (ushort)(GBCRegisters.PC + 2));
+                GBCRegisters.PC = _mmu.ReadUint16(GBCRegisters.PC);
+            }
+            else
+                GBCRegisters.PC = (ushort)((GBCRegisters.PC + 2) & 0xFFFF);
+        }
+        
+        [Opcode("PUSH BC", 0xC5)]
+        public static void PUSHBC()
+        {
+            GBCRegisters.SP = (ushort)((GBCRegisters.SP - 1) & 0xFFFF);
+            _mmu.WriteByte(GBCRegisters.SP, GBCRegisters.B);
+            GBCRegisters.SP = (ushort)((GBCRegisters.SP - 1) & 0xFFFF);
+            _mmu.WriteByte(GBCRegisters.SP, GBCRegisters.C);
+        }
+        
+        [Opcode("ADD &{0:X2}", 0xC6)]
+        public static void ADDN()
+        {
+            var dirtySum = (int)(GBCRegisters.A + _mmu.ReadByte(GBCRegisters.PC));
+            GBCRegisters.PC = (ushort)((GBCRegisters.PC + 1) & 0xFFFF);
+            GBCRegisters.SetFlagIf((dirtySum & 0xF) < (GBCRegisters.A & 0xF), Flags.HalfCarry);
+            GBCRegisters.SetFlagIf(dirtySum > 0xFF, Flags.Carry);
+            GBCRegisters.A = (byte)(dirtySum & 0xFF);
+            GBCRegisters.SetFlagIf(GBCRegisters.A == 0, Flags.Zero);
+            GBCRegisters.UnsetFlag(Flags.Operation);
+        }
+        
+        [Opcode("RST 00", 0xC7)]
+        public static void RST00()
+        {
+            GBCRegisters.SP = (ushort)((GBCRegisters.SP - 2) & 0xFFFF);
+            _mmu.WriteUint16(GBCRegisters.SP, GBCRegisters.PC);
+            GBCRegisters.PC = 0;
         }
     }
 }
