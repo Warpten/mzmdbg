@@ -18,7 +18,7 @@ namespace mzmdbg
     [FlagsAttribute]
     public enum Flags
     {
-    	All       = 0xF0,
+        All       = 0xF0,
         Zero      = 0x80, // Set if the last operation produced a result of 0
         Operation = 0x40, // Set if the last operation was a subtraction
         HalfCarry = 0x20, // Set if, in the result of the last operation, the lower half of the byte overflowed past 15
@@ -177,68 +177,68 @@ namespace mzmdbg
             MethodInfo[] methodsInfos = typeof(GBCEmulator).GetMethods(BindingFlags.Static | BindingFlags.Public);
             foreach (var methodInfo in methodsInfos)
             {
-            	foreach (Attribute attr in Attribute.GetCustomAttributes(methodInfo))
-            	{
-            		if (attr.GetType() != typeof(Opcode))
-            			continue;
-            	
-            		var opcode = (attr as Opcode)._byteValue;
-					//! TODO: CB opcodes
-					if (table.ContainsKey(opcode))
-					{
-					    MainForm.LogLine("Trying to overwrite opcode 0x{0:X2} handler with {1}, ignoring.", opcode, methodInfo.Name);
-					    continue;
-					}
-					
-					table.Add(opcode, Expression.Lambda(Expression.Call(null, methodInfo)).Compile());
-					_decompilerStrings.Add(opcode, (attr as Opcode)._decompilerString);
-            	}
+                foreach (Attribute attr in Attribute.GetCustomAttributes(methodInfo))
+                {
+                    if (attr.GetType() != typeof(Opcode))
+                        continue;
+                
+                    var opcode = (attr as Opcode)._byteValue;
+                    //! TODO: CB opcodes
+                    if (table.ContainsKey(opcode))
+                    {
+                        MainForm.LogLine("Trying to overwrite opcode 0x{0:X2} handler with {1}, ignoring.", opcode, methodInfo.Name);
+                        continue;
+                    }
+                    
+                    table.Add(opcode, Expression.Lambda(Expression.Call(null, methodInfo)).Compile());
+                    _decompilerStrings.Add(opcode, (attr as Opcode)._decompilerString);
+                }
             }
             
             // Make sure all opcodes are handled now
             for (var i = 0; i < 0xFF; ++i)
-        		if (!table.ContainsKey(i))
-        			MainForm.LogLine(String.Format("Opcode 0x{0:X2} not handled.", i));
+                if (!table.ContainsKey(i))
+                    MainForm.LogLine(String.Format("Opcode 0x{0:X2} not handled.", i));
             return table;
         }
         
         public static void LoadROM(byte[] romBuffer)
         {
-        	// ROM Name
-        	string romName = string.Empty;
-        	for (var i = 0x0134; i < 0x013F; ++i)
-        		romName += (char)romBuffer[i];
-        	
-        	// ROM Game code (newer games)
-        	string gameCode = string.Empty;
-        	for (var i = 0x013F; i < 0x0143; ++i)
-        		gameCode += (char)romBuffer[i];
-        	
-        	MainForm.LogLine(@"ROM Name: {0}", romName);
-        	MainForm.LogLine(@"Game code: {0} ({1})", gameCode, romBuffer[0x0143]);
-        	int cartridgeType = romBuffer[0x147];
-        	MainForm.LogLine(@"Cartridge type: 0x{0:X} (0)", cartridgeType, 0);
-        	
-        	// License code lookup
-        	var oldLicense = romBuffer[0x014B];
-        	var newLicense = (romBuffer[0x144] & 0xFF00) | (romBuffer[0x145] & 0xFF);
-        	MainForm.LogLine(@"{0} License Header: {1}",
-				oldLicense != 0x33 ? "Old" : "New",
-				oldLicense != 0x33 ? oldLicense : newLicense);
-        	
-        	// Now time for the vodoo
+            // ROM Name
+            string romName = string.Empty;
+            for (var i = 0x0134; i < 0x013F; ++i)
+                romName += (char)romBuffer[i];
+            
+            // ROM Game code (newer games)
+            string gameCode = string.Empty;
+            for (var i = 0x013F; i < 0x0143; ++i)
+                gameCode += (char)romBuffer[i];
+            
+            MainForm.LogLine(@"ROM Name: {0}", romName);
+            MainForm.LogLine(@"Game code: {0} ({1})", gameCode, romBuffer[0x0143]);
+            int cartridgeType = romBuffer[0x147];
+            MainForm.LogLine(@"Cartridge type: 0x{0:X} (0)", cartridgeType, 0);
+            
+            // License code lookup
+            var oldLicense = romBuffer[0x014B];
+            var newLicense = (romBuffer[0x144] & 0xFF00) | (romBuffer[0x145] & 0xFF);
+            MainForm.LogLine(@"{0} License Header: {1}",
+                oldLicense != 0x33 ? "Old" : "New",
+                oldLicense != 0x33 ? oldLicense : newLicense);
+            
+            // Now time for the vodoo
         }
 
         public static void Reset()
         {
-        	GBCRegisters.Clear();
+            GBCRegisters.Clear();
             GBCClock.Clear();
         }
         
         #region Opcode handlers helpers
         private static void INC8BitRegister(ref byte register)
         {
-        	register = (byte)((register + 1) & 0xFF);
+            register = (byte)((register + 1) & 0xFF);
             if (register == 0)
                 GBCRegisters.SetFlag(Flags.Zero);
             if ((register & 0xF) == 0)
@@ -248,7 +248,7 @@ namespace mzmdbg
         
         private static void DEC8BitRegister(ref byte register)
         {
-        	register = (byte)((register - 1) & 0xFF);
+            register = (byte)((register - 1) & 0xFF);
             if (register == 0)
                 GBCRegisters.SetFlag(Flags.Zero);
             if ((register & 0xF) == 0xF)
@@ -258,12 +258,12 @@ namespace mzmdbg
         
         private static void INC16BitRegister(ref ushort register)
         {
-        	register = (ushort)((register + 1) & 0xFFFF);
+            register = (ushort)((register + 1) & 0xFFFF);
         }
         
         private static void DEC16BitRegister(ref ushort register)
         {
-        	register = (ushort)((register - 1) & 0xFFFF);
+            register = (ushort)((register - 1) & 0xFFFF);
         }
         
         private static void LD8BitRegisterTo8BitRegister(ref byte dest, byte source)
@@ -432,7 +432,7 @@ namespace mzmdbg
         [Opcode("RRCA", 0x0F)]
         public static void RRCA() // OK
         {
-        	GBCRegisters.A = (byte)((GBCRegisters.A >> 1) | ((GBCRegisters.A & 1) << 7));
+            GBCRegisters.A = (byte)((GBCRegisters.A >> 1) | ((GBCRegisters.A & 1) << 7));
 
             GBCRegisters.F = 0;
             if (GBCRegisters.A > 0x7F)
@@ -486,7 +486,7 @@ namespace mzmdbg
         [Opcode("RLA", 0x17)]
         public static void RLA() // OK
         {
-        	byte carryRemainder = (byte)(GBCRegisters.IsFlagEnabled(Flags.Carry) ? 0x01 : 0x00);
+            byte carryRemainder = (byte)(GBCRegisters.IsFlagEnabled(Flags.Carry) ? 0x01 : 0x00);
 
             GBCRegisters.F = 0;
             if (GBCRegisters.A > 0x7F)
@@ -500,7 +500,7 @@ namespace mzmdbg
         {
             var i = _mmu.ReadByte(GBCRegisters.PC);
             if (i > 0x7F)
-            	i = (byte)(-((~i+1) & 0xFF));
+                i = (byte)(-((~i+1) & 0xFF));
             GBCRegisters.PC += i;
         }
         
@@ -557,7 +557,7 @@ namespace mzmdbg
         {
             var i = (ushort)_mmu.ReadByte(GBCRegisters.PC);
             if (i > 0x7F)
-            	i = (ushort)(-((~i + 1) & 0xFF));
+                i = (ushort)(-((~i + 1) & 0xFF));
             ++GBCRegisters.PC;
             if (!GBCRegisters.IsFlagEnabled(Flags.Zero))
             {
@@ -613,28 +613,28 @@ namespace mzmdbg
             {
                 if (GBCRegisters.IsFlagEnabled(Flags.Carry) || GBCRegisters.A > 0x99)
                 {
-                	GBCRegisters.A = (byte)((GBCRegisters.A + 0x60) & 0xFF);
+                    GBCRegisters.A = (byte)((GBCRegisters.A + 0x60) & 0xFF);
                     GBCRegisters.SetFlag(Flags.Carry);
                 }
                 
                 if (GBCRegisters.IsFlagEnabled(Flags.HalfCarry) || (GBCRegisters.A & 0x0F) > 0x09)
                 {
-                	GBCRegisters.A = (byte)((GBCRegisters.A + 0x06) & 0xFF);
+                    GBCRegisters.A = (byte)((GBCRegisters.A + 0x06) & 0xFF);
                     GBCRegisters.UnsetFlag(Flags.HalfCarry);
                 }
             }
             else if (GBCRegisters.IsFlagEnabled(Flags.Carry, Flags.HalfCarry))
             {
-            	GBCRegisters.A = (byte)((GBCRegisters.A + 0x9A) & 0xFF);
+                GBCRegisters.A = (byte)((GBCRegisters.A + 0x9A) & 0xFF);
                 GBCRegisters.UnsetFlag(Flags.HalfCarry);
             }
             else if (GBCRegisters.IsFlagEnabled(Flags.Carry))
             {
-            	GBCRegisters.A = (byte)((GBCRegisters.A + 0xA0) & 0xFF);
+                GBCRegisters.A = (byte)((GBCRegisters.A + 0xA0) & 0xFF);
             }
             else if (GBCRegisters.IsFlagEnabled(Flags.HalfCarry))
             {
-            	GBCRegisters.A = (byte)((GBCRegisters.A + 0xFA) & 0xFF);
+                GBCRegisters.A = (byte)((GBCRegisters.A + 0xFA) & 0xFF);
                 GBCRegisters.UnsetFlag(Flags.HalfCarry);
             }
             
@@ -650,7 +650,7 @@ namespace mzmdbg
             ++GBCRegisters.PC;
             if (GBCRegisters.IsFlagEnabled(Flags.Zero))
             {
-            	GBCRegisters.PC += (ushort)i;
+                GBCRegisters.PC += (ushort)i;
             }
         }
         
@@ -709,7 +709,7 @@ namespace mzmdbg
             ++GBCRegisters.PC;
             if (!GBCRegisters.IsFlagEnabled(Flags.Carry))
             {
-            	GBCRegisters.PC += (ushort)i;
+                GBCRegisters.PC += (ushort)i;
             }
         }
         
@@ -780,7 +780,7 @@ namespace mzmdbg
             ++GBCRegisters.PC;
             if (GBCRegisters.IsFlagEnabled(Flags.Carry))
             {
-            	GBCRegisters.PC += (ushort)i;
+                GBCRegisters.PC += (ushort)i;
                 ++GBCRegisters.M;
             }
         }

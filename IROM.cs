@@ -10,11 +10,11 @@ using System;
 
 namespace mzmdbg
 {
-	/// <summary>
-	/// Description of IROM.
-	/// </summary>
-	public interface IROM
-	{
-		
-	}
+    /// <summary>
+    /// Description of IROM.
+    /// </summary>
+    public interface IROM
+    {
+        
+    }
 }

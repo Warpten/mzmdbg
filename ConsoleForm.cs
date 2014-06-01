@@ -1,6 +1,6 @@
 ﻿/*
  * Created by SharpDevelop.
- * User: perquet
+ * User: Warpten
  * Date: 01/06/2014
  * Time: 11:14
  * 
@@ -12,31 +12,31 @@ using System.Windows.Forms;
 
 namespace mzmdbg
 {
-	/// <summary>
-	/// Description of ConsoleForm.
-	/// </summary>
-	public partial class ConsoleForm : Form
-	{
-		public ConsoleForm()
-		{
-			//
-			// The InitializeComponent() call is required for Windows Forms designer support.
-			//
-			InitializeComponent();
-			
-			//
-			// TODO: Add constructor code after the InitializeComponent() call.
-			//
-		}
-		
-		public void LogLine(string message)
-		{
-			consoleRTB.AppendText(message + Environment.NewLine);
-		}
-		
-		void OnClickMenuClear(object sender, EventArgs e)
-		{
-			consoleRTB.Clear();
-		}
-	}
+    /// <summary>
+    /// Description of ConsoleForm.
+    /// </summary>
+    public partial class ConsoleForm : Form
+    {
+        public ConsoleForm()
+        {
+            //
+            // The InitializeComponent() call is required for Windows Forms designer support.
+            //
+            InitializeComponent();
+            
+            //
+            // TODO: Add constructor code after the InitializeComponent() call.
+            //
+        }
+        
+        public void LogLine(string message)
+        {
+            consoleRTB.AppendText(message + Environment.NewLine);
+        }
+        
+        void OnClickMenuClear(object sender, EventArgs e)
+        {
+            consoleRTB.Clear();
+        }
+    }
 }

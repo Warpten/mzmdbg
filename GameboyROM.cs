@@ -3,9 +3,9 @@ using GBAHL;
 
 namespace mzmdbg
 {
-	// Normally aimed at GBA ROMs.
-	//! TODO: Get rid of GBAHL and make mah own rom reader (BinaryReader)
-	public class GameboyROM : IROM
+    // Normally aimed at GBA ROMs.
+    //! TODO: Get rid of GBAHL and make mah own rom reader (BinaryReader)
+    public class GameboyROM : IROM
     {
         private ROM _rom;
         // private ROMType _type;
