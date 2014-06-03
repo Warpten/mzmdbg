@@ -65,11 +65,10 @@ namespace mzmdbg
         {
             OpenFileDialog o = new OpenFileDialog();
             o.Title = "Open ROM";
-            o.Filter = "GBA ROMs|*.gba|GB ROMs|*.gb";
+            o.Filter = "GBA ROMs|*.gba|GB ROMs|*.gb|GBC ROMs|*.gbc";
             if (o.ShowDialog() != DialogResult.OK)
                 return;
             
-            byte[] romBuffer = File.ReadAllBytes(o.FileName);
             var romExtension = Path.GetExtension(o.FileName).ToLower();
             if (romExtension == ".gba")
             {
@@ -77,7 +76,7 @@ namespace mzmdbg
                 throw new NotImplementedException();
                 // _rom = new GBAROM(romBuffer);
             }
-            else // if (romExtension == ".gb")
+            else // if (romExtension == ".gb" || romExtension == ".gbc")
             {
                 gbcRendererControl.Top = (this.ClientSize.Height - 144) / 2;
                 gbcRendererControl.Left = (this.ClientSize.Width - 160) / 2;
@@ -85,7 +84,7 @@ namespace mzmdbg
                 gbcRendererControl.Height = 144;
                 gbcRendererControl.Show();
                 
-                GBCEmulator.LoadROM(romBuffer, ref gbcRendererControl);
+                GBCEmulator.LoadROM(File.ReadAllBytes(o.FileName), ref gbcRendererControl);
             }
         }
         

@@ -608,16 +608,20 @@ namespace mzmdbg
 
             // ROM Name
             string romName = string.Empty;
-            for (var i = 0x0134; i < 0x013F; ++i)
-                romName += (char)romBuffer[i];
-
-            // Is Japanese ROM
-            var isJapanese = romBuffer[0x014A] == 0x00;
+            int nameItr = 0x0134;
+            for (; nameItr < 0x013F && romBuffer[nameItr] != 0; ++nameItr)
+                romName += (char)romBuffer[nameItr];
             
-            MainForm.LogLine(@"ROM Name: {0}{1}", romName, isJapanese ? "(JP)" : "");
+            MainForm.LogLine(@"ROM Name: {0} {1}", romName, _isColorGameBoy ? "(CGB)" : "(GB)");
 
-            // Licensee code lookup
-            var isOldLicensee = romBuffer[0x014B] == 0x33;
+            // if (nameItr < 0x0143)
+            // {
+            //     // Newer games have their name reduced to 15 then 11 chars.
+            //     // Manufacturer code.. 0x013F - 0x142
+            // }
+            
+            // Has Super Game Boy functions
+            var supportsSuperGameBoy = romBuffer[0x0146] == 0x03;
 
             // Header Checksum
             // Contains an 8 bit checksum across the cartridge header bytes 0134-014C.
@@ -633,6 +637,9 @@ namespace mzmdbg
 
             if (!isChecksumValid)
                 return;
+            
+            // 014E-014F - Global Checksum
+            // Not verified by the GameBoy, so we'll ignore it
 
             // Now disable the internal ROM and begin cartridge execution at 0x0100.
             GBCRegisters.AF = 0x01B0;
