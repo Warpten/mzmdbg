@@ -27,6 +27,7 @@ namespace mzmdbg
     {
         private IROM _rom;
         private bool _gbcRendererLoaded = false;
+        private bool _gbaRendererLoaded = false;
 
         public MainForm()
         {
@@ -118,7 +119,10 @@ namespace mzmdbg
         
         void OnKeyDown(object sender, KeyEventArgs e)
         {
-            GBCEmulator.OnKeyPress(e.KeyCode);
+            if (_gbcRendererLoaded && !_gbaRendererLoaded)
+                GBCEmulator.OnKeyPress(e.KeyCode);
+            // else if (!_gbcRendererLoaded && _gbaRendererLoaded)
+            //     GBAEmulator.OnKeyPress(e.KeyCode);
         }
         
         void OnControlsMenuToolStrip(object sender, EventArgs e)
