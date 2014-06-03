@@ -46,6 +46,7 @@ namespace mzmdbg
             this.controlsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.debuggerToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.consoleToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.gbcRendererControl = new OpenTK.GLControl();
             this.menuStrip1.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -56,11 +57,11 @@ namespace mzmdbg
             // 
             // menuStrip1
             // 
+            resources.ApplyResources(this.menuStrip1, "menuStrip1");
             this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
                                     this.loadToolStripMenuItem,
                                     this.debuggerToolStripMenuItem,
                                     this.consoleToolStripMenuItem});
-            resources.ApplyResources(this.menuStrip1, "menuStrip1");
             this.menuStrip1.Name = "menuStrip1";
             // 
             // loadToolStripMenuItem
@@ -93,6 +94,7 @@ namespace mzmdbg
             // 
             this.controlsToolStripMenuItem.Name = "controlsToolStripMenuItem";
             resources.ApplyResources(this.controlsToolStripMenuItem, "controlsToolStripMenuItem");
+            this.controlsToolStripMenuItem.Click += new System.EventHandler(this.OnControlsMenuToolStrip);
             // 
             // debuggerToolStripMenuItem
             // 
@@ -106,10 +108,22 @@ namespace mzmdbg
             resources.ApplyResources(this.consoleToolStripMenuItem, "consoleToolStripMenuItem");
             this.consoleToolStripMenuItem.Click += new System.EventHandler(this.OnConsoleToolStripClick);
             // 
+            // gbcRendererControl
+            // 
+            this.gbcRendererControl.BackColor = System.Drawing.Color.Black;
+            this.gbcRendererControl.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            resources.ApplyResources(this.gbcRendererControl, "gbcRendererControl");
+            this.gbcRendererControl.Name = "gbcRendererControl";
+            this.gbcRendererControl.VSync = true;
+            this.gbcRendererControl.Load += new System.EventHandler(this.OnGlLoad);
+            this.gbcRendererControl.Paint += new System.Windows.Forms.PaintEventHandler(this.OnGamePaint);
+            this.gbcRendererControl.KeyDown += new System.Windows.Forms.KeyEventHandler(this.OnKeyDown);
+            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.gbcRendererControl);
             this.Controls.Add(this.statusStrip1);
             this.Controls.Add(this.menuStrip1);
             this.MainMenuStrip = this.menuStrip1;
@@ -119,6 +133,7 @@ namespace mzmdbg
             this.ResumeLayout(false);
             this.PerformLayout();
         }
+        private OpenTK.GLControl gbcRendererControl;
         private System.Windows.Forms.ToolStripMenuItem consoleToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem debuggerToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem controlsToolStripMenuItem;

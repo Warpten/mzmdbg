@@ -14,6 +14,9 @@ using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
 
 namespace mzmdbg
 {
@@ -23,6 +26,7 @@ namespace mzmdbg
     public partial class MainForm : Form
     {
         private IROM _rom;
+        private bool _gbcRendererLoaded = false;
 
         public MainForm()
         {
@@ -74,8 +78,13 @@ namespace mzmdbg
             }
             else // if (romExtension == ".gb")
             {
-                // throw new NotImplementedException();
-                GBCEmulator.LoadROM(romBuffer);
+                gbcRendererControl.Top = (this.ClientSize.Height - 144) / 2;
+                gbcRendererControl.Left = (this.ClientSize.Width - 160) / 2;
+                gbcRendererControl.Width = 160;
+                gbcRendererControl.Height = 144;
+                gbcRendererControl.Show();
+                
+                GBCEmulator.LoadROM(romBuffer, ref gbcRendererControl);
             }
         }
         
@@ -87,6 +96,39 @@ namespace mzmdbg
                 return;
             }
             var console = new ConsoleForm();
+            console.Show();
+        }
+        
+        void OnGlLoad(object sender, EventArgs e)
+        {
+            _gbcRendererLoaded = true;
+            GL.MatrixMode(MatrixMode.Projection);
+            GL.LoadIdentity();
+            GL.Ortho(0, gbcRendererControl.Width, 0, gbcRendererControl.Height, -1, 1);
+            GL.Viewport(0, 0, gbcRendererControl.Width, gbcRendererControl.Height);
+        }
+        
+        void OnGamePaint(object sender, PaintEventArgs e)
+        {
+            if (!_gbcRendererLoaded)
+                return;
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            gbcRendererControl.SwapBuffers();
+        }
+        
+        void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            GBCEmulator.OnKeyPress(e.KeyCode);
+        }
+        
+        void OnControlsMenuToolStrip(object sender, EventArgs e)
+        {
+            if (Application.OpenForms["ControlsForm"] != null)
+            {
+                Application.OpenForms["ControlsForm"].BringToFront();
+                return;
+            }
+            var console = new ControlsForm();
             console.Show();
         }
     }
