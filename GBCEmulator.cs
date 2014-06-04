@@ -238,6 +238,12 @@ namespace mzmdbg
             set { STAT = (byte)(((STAT >> 4) << 4) | value); }
         }
         
+        public static bool OamInterrupt    = false;
+        public static bool VBlankInterrupt = false;
+        public static bool HBlankInterrupt = false;
+        public static bool CoincidenceInterrupt = false;
+        
+        private static bool _lcdEnabled = true;
         
         /// <summary>
         /// Defines the control that renders the game and initializes
@@ -274,7 +280,41 @@ namespace mzmdbg
         
         public static void WriteRegister(int addr, byte value)
         {
-            _registers[addr - 0xFF40] = value;
+            addr -= 0xFF40;
+            _registers[addr] = value;
+            if (addr == 1) // STAT
+            {
+                CoincidenceInterrupt = (addr & 0x40) != 0;
+                OamInterrupt = (addr & 0x20) != 0;
+                VBlankInterrupt = (addr & 0x10) != 0;
+                HBlankInterrupt = (addr & 0x80) != 0;
+                _registers[addr] = value & 0x78;
+            }
+            else if (addr == 0) // LCD Control
+            {
+                var toggleLCD = value > 0x7F; // Bit 7 - LCD Display Enable
+                if (_lcdEnabled != toggleLCD)
+                {
+                    _lcdEnabled = toggleLCD;
+                    _registers[1] &= 0x78;
+                    if (_lcdEnabled)
+                    {
+                        ModeFlag = 2;
+                        EnableLCD();
+                    }
+                    else
+                    {
+                        ModeFlag = 0;
+                        DisableLCD();
+                    }
+                    
+                }
+            }
+            else if (addr == 6) // DMA
+            {
+                if (value >= 0xE0)
+                    return;
+            }
         }
         
         public static void InitializeLineControl() // initializeLCDController 
