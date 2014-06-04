@@ -131,7 +131,7 @@ namespace mzmdbg
         public static void UnsetFlag(params Flags[] flag)
         {
             for (int i = 0; i < flag.Length; ++i)
-                F ^= (byte)flag[i];
+                F &= (byte)(~(int)flag[i]);
         }
 
         public static void SetFlagIf(bool condition, Flags flag)
@@ -161,44 +161,11 @@ namespace mzmdbg
             Transfer = 3
         };
         
-        public enum LCDInterrupts
-        {
-            VBlank    = 40,
-            STAT      = 48
-        }
-        
         private static GLControl _control;
-        public static byte LCDC; // LCD Control Register
-        public static byte STAT; // LCD Status Register
-        public static byte ModeFlag
-        {
-            get { return (byte)((STAT & 1) | STAT & 2); }
-            private set { STAT = (byte)(((STAT >> 4) << 4) | (value & 1) | (value & 2)); }
-        }
-        private static int SCX = 0;
-        private static int SCY = 0;
-        private static int LY = 0;
-        private static int LYC = 0;
-        private static int WX = 0;
-        private static int WY = 0;
-        private static int BPD = 0;     // BG Palette Data
-                                        // Only used in GB Mode (0 White, 1 LG, 2 DG, 3 Black)        
-        private static int BCPS = 0;    // Background Palette Index (CGB Only)
-        private static ushort BCPD = 0; // Background Palette Data  (CGB Only)
-        private static ushort BCPDR // Only 15 bits are used (0..14)
-        {
-            get { return (ushort)(BCPD & 1 | BCPD & 2 | BCPD & 4 | BCPD & 8 | BCPD & 16); }
-        }
-        
-        private static byte VBK; // VRam Bank (CGB Only) (CGB has two, so 0..1)
-        // Bank 0 contains 192 tiles and two background maps.
-        // Bank 1 contains 192 tiles and color attribute maps for the BG maps in B0.
-        private static byte HDMA;
-        
+
         private static bool IsDoubleSpeedGBC = false;
         private static bool IsColorGameBoy = false;
-        
-        private static int _line = 0;
+
         private static int _modeClock = 0;
 
         private static byte[] _oam;
@@ -236,44 +203,149 @@ namespace mzmdbg
 
         private static byte[,,] _pixelBuffer; // Used for on-screen rendering
         
+        private static List<Action> _lineControl = new List<Action>();
+        
+        private static byte[] _registers = new byte[0xF]; // Grossy over-estimated size
+        private static byte LCDC {
+            get { return ReadRegister(0xFF40); }
+            set { WriteRegister(0xFF40, value); }
+        }
+        private static byte STAT {
+            get { return ReadRegister(0xFF41); }
+            set { WriteRegister(0xFF41, value); }
+        }
+        private static byte SCY {
+            get { return ReadRegister(0xFF42); }
+            set { WriteRegister(0xFF42, value); }
+        }
+        private static byte SCX {
+            get { return ReadRegister(0xFF43); }
+            set { WriteRegister(0xFF43, value); }
+        }
+        private static byte LY   { get { return ReadRegister(0xFF44); } }
+        private static byte LYC {
+            get { return ReadRegister(0xFF45); }
+            set { WriteRegister(0xFF45, value); }
+        }
+        private static byte WY   { get { return _registers[6]; } }
+        private static byte WX   { get { return _registers[7]; } }
+        // private static byte BGP  { get { return _registers[8]; } }
+        // private static byte OBP0 { get { return _registers[9]; } }
+        // private static byte OBP1 { get { return _registers[10]; } }
+        
+        private static byte ModeFlag {
+            get { return (byte)((STAT & 1) | (STAT & 2)); }
+            set { STAT = (byte)(((STAT >> 4) << 4) | value); }
+        }
+        
+        
         /// <summary>
         /// Defines the control that renders the game and initializes
         /// all video related objects.
         /// </summary>
         /// <param name="ctrl">A reference to the GLControl renderer.</param>
-        public static void SetRenderer(ref GLControl ctrl)
+        public static void LoadROM(ref byte[] romBuffer, ref GLControl ctrl)
         {
             _control = ctrl;
             
             IsColorGameBoy = GBCEmulator.IsColorGameBoy;
             
-            _vram = new byte[IsColorGameBoy ? 0x4000 : 0x2000];
-            _oam = new byte[160];            
+            _vram = new byte[8192];
+            _oam = new byte[160];  
+            Buffer.BlockCopy(romBuffer, 0x8000, _vram, 0, 8192);
+            Buffer.BlockCopy(romBuffer, 0xFE00, _oam, 0, 160);
+          
 
-            _pixelBuffer = new byte[160,144,4];
+            _pixelBuffer = new byte[160,144,3];
 
             ctrl.MakeCurrent(); // Make it current for OpenGL
             
             // Clear renderer and trigger invalidation to update display.
             GL.ClearColor(Color.White);
             ctrl.Invalidate();
+            
+            InitializeLineControl();
+        }
+
+        public static byte ReadRegister(int addr)
+        {
+            return _registers[addr - 0xFF40];
         }
         
-        public static void UpdateTile(int addr, byte value)
+        public static void WriteRegister(int addr, byte value)
         {
-            var addrCopy = addr;
-            /*if (addr & 0x1)
+            _registers[addr - 0xFF40] = value;
+        }
+        
+        public static void InitializeLineControl() // initializeLCDController 
+        {
+            var currentLine = 0;
+            while (currentLine < 154)
             {
-                --addrCopy; --addr;
-            }*/
-            var tile = (addr >> 4) & 511;
-            var y = (addr >> 1) & 7;
-            for (var x = 0; x < 8; ++x)
-            {
-                var shift = 1 << (7 - x);
-                var tileValue = (_vram[addrCopy] & shift) != 0 ? 1 : 0;
-                tileValue    += (_vram[addrCopy + 1] & shift) != 0 ? 2 : 0;
-                //_tileSet[tile][y][x] = (byte)tileValue;
+                if (currentLine < 143)
+                {
+                    _lineControl.Add(
+                        delegate() {
+                            if (_modeClock < 20)
+                                ScanLineOAM();
+                            else if (_modeClock < 63) // Should be 43 according to Step()
+                                ScanLineVRAM();
+                            else if (_modeClock < 114)
+                                ScanLineHBlank();
+                            else
+                            {
+                                _modeClock -= 114;
+                                if (LY == LYC)
+                                {
+                                    // TODO Trigger interrupt, STAT coincidence
+                                }
+                                // Also execute HDMA here
+                                ModeFlag = 2; // Enter OAM read
+                            }
+                    });
+                }
+                else if (currentLine == 143)
+                {
+                    _lineControl.Add(
+                        delegate() {
+                            if (_modeClock < 20)
+                                ScanLineOAM();
+                            else if (_modeClock < 63) // Should be 43 according to Step()
+                                ScanLineVRAM();
+                            else if (_modeClock < 114)
+                                ScanLineHBlank();
+                            else
+                            {
+                                _modeClock -= 114;
+                                
+                                if (LY == LYC)
+                                {
+                                    // TODO Trigger interrupt, STAT coincidence
+                                }
+                                // Also execute HDMA here
+                                ModeFlag = 1; // Enter VBLANK
+                                _lineControl[144].Invoke();
+                            }
+                    });
+                }
+                else if (currentLine < 153)
+                {
+                    _lineControl.Add(
+                        delegate() {
+                            if (_modeClock < 114)
+                                return;
+                            
+                            _modeClock -= 114;
+                            ++LYC;
+                            if (LY == LYC)
+                            {
+                                // TODO Trigger interrupt, STAT coincidence
+                            }
+                            ModeFlag = 2; // OAM Read
+                            _lineControl[LYC].Invoke();
+                    });
+                }
+                ++currentLine;
             }
         }
         
@@ -283,13 +355,29 @@ namespace mzmdbg
         
         public static void RenderScan()
         {
-            // if (!_isLcdEnabled)
-                return;
         }
         
         public static void RenderToScreen()
         {
             ModeFlag = (byte)ModeFlags.VBlank;
+            
+            GL.DrawPixels(160, 144, PixelFormat.Rgb, PixelType.UnsignedByte, _pixelBuffer);
+            _control.Invalidate();
+        }
+        
+        public static void ScanLineOAM()
+        {
+             
+        }
+        
+        public static void ScanLineVRAM()
+        {
+            
+        }
+        
+        public static void ScanLineHBlank()
+        {
+            
         }
         
         public static void Step()
@@ -297,6 +385,18 @@ namespace mzmdbg
             _modeClock += GBCRegisters.M;
             switch (ModeFlag)
             {
+                case 0: // HBLANK
+                    if (_modeClock < 51)
+                        break;
+
+                    // Last line, enter VBLANK and draw
+                    if (LYC == 143)
+                        RenderToScreen();
+                    else
+                        ModeFlag = 2;
+                    _modeClock = 0;
+                    ++LYC;
+                    break;
                 case 2: // OAM Read Mode
                     if (_modeClock > 20)
                     {
@@ -312,28 +412,16 @@ namespace mzmdbg
                         RenderScan();
                     }
                     break;
-                case 0: // HBLANK
-                    if (_modeClock < 51)
-                        break;
-
-                    _modeClock = 0;
-                    ++_line;
-                    // Last line, enter VBLANK and draw
-                    if (_line == 143)
-                        RenderToScreen();
-                    else
-                        ModeFlag = 2;
-                    break;
                 case 1: // VBLANK
                     if (_modeClock < 114)
                         break;
 
                     _modeClock = 0;
-                    _line++;
-                    if (_line >= 153)
+                    LYC++;
+                    if (LYC >= 153)
                     {
                         ModeFlag = 2;
-                        _line = 0;
+                        LYC = 0;
                     }
                     break;
             }
@@ -344,7 +432,7 @@ namespace mzmdbg
     // [0000-3FFF] Cartridge ROM, bank 0
     //   [0000-00FF] BIOS
     //   [0100-014F] Cartridge header
-    // [4000-7FFF] Cartridge ROM, other banks
+    // [4000-7FFF] Cartridge ROM, other banks (each being 16Kb)
     // [8000-9FFF] Graphics RAM
     // [A000-BFFF] Cartridge (External) RAM
     // [C000-DFFF] Working RAM
@@ -363,69 +451,73 @@ namespace mzmdbg
 
         public GBCMMU()
         {
-            _rom = new byte[0x7FFF]; // ROM Bank 0 + ROM Bank 1 (Which can be toggled)
-            _wram = new byte[0xFDFF - 0xC000 + 1];
+            _rom = new byte[0x7FFF + 1]; // ROM Bank 0, ROM Bank 0x1..0x07
+            _wram = new byte[0xDFFF - 0xC000 + 1];
             _eram = new byte[0xBFFF - 0xA000 + 1];
-            _zram = new byte[0xFFFF - 0xFF80 + 1]; 
+            _zram = new byte[0xFFFE - 0xFF80 + 1]; 
         }
         
         public void LoadROM(byte[] romBuffer, ref GLControl control)
         {
-            // Buffer.BlockCopy(romBuffer, 0, _rom, 0, romBuffer.Length);
-            GBCGPU.SetRenderer(ref control);
+            Buffer.BlockCopy(romBuffer, 0x0000, _rom, 0x0000, _rom.Length);
+            Buffer.BlockCopy(romBuffer, 0xC000, _wram, 0x0000, _wram.Length);
+            Buffer.BlockCopy(romBuffer, 0xA000, _eram, 0x0000, _eram.Length);
+            Buffer.BlockCopy(romBuffer, 0xFF80, _zram, 0x0000, _zram.Length);
+            
+            GBCGPU.LoadROM(ref romBuffer, ref control);
         }
         
-        public byte ReadByte(int adress)
+        public byte ReadByte(int addr)
         {
-            switch (adress & 0xF000)
+            switch (addr & 0xF000)
             {
                 case 0x0000: // BIOS / ROM Bank 0
                     if (inBios)
                     {
-                        if (adress < 0x0100)
-                            return _bios[adress];
+                        if (addr < 0x0100 || GBCEmulator.IsColorGameBoy && addr >= 0x0200 && addr < 0x0900)
+                            return _bios[addr];
                         else if (GBCRegisters.PC == 0x0100)
                             inBios = false;
                     }
-                    return _rom[adress];
+                    return _rom[addr];
                 // ROM0
                 case 0x1000:
                 case 0x2000:
                 case 0x3000:
-                    return _rom[adress];
+                    return _rom[addr];
                 // ROM1
                 case 0x4000:
                 case 0x5000:
                 case 0x6000:
                 case 0x7000:
-                    return _rom[adress];
+                    return _rom[addr];
                 // VRAM
                 case 0x8000:
                 case 0x9000:
-                    return GBCGPU.VRAM[adress & 0x1FFF];
+                    return GBCGPU.VRAM[addr & 0x1FFF];
                 // ERAM
                 case 0xA000:
                 case 0xB000:
-                    return _eram[adress & 0x1FFF];
+                    return _eram[addr & 0x1FFF0];
                 // WRAM
                 case 0xC000:
                 case 0xD000:
                 case 0xE000:
-                    return _wram[adress & 0x1FFF];
+                    return _wram[addr & 0x1FFF];
                 case 0xF000: // WRAM Copy, IO, 0MAP
-                    switch (adress & 0x0F00)
+                    switch (addr & 0x0F00)
                     {
                         case 0x0E00: // OAM
-                            if ((adress & 0xFF) < 0xA0)
-                                return GBCGPU.OAM[adress & 0xFF];
-                            return 0;
+                            if ((addr & 0xFF) < 0xA0)
+                                return GBCGPU.OAM[addr & 0xFF];
+                            return 0; // Invalid memory
                         case 0x0F00: // Zero-page
-                            if (adress > 0xFF7F)
-                                return _zram[adress & 0x7F];
+                            if (addr > 0xFF7F)
+                                return _zram[addr & 0x7F];
                             else // IO Currently no handling
                                 return 0;
                         default:
-                            return _wram[adress & 0x1FFF];
+                            return _wram[addr & 0x1FFF];
                     }
             }
             return 0; // Give the compiler some happiness
@@ -454,7 +546,6 @@ namespace mzmdbg
                 case 0x8000:
                 case 0x9000:
                     GBCGPU.VRAM[adress & 0x1FFF] = value;
-                    GBCGPU.UpdateTile(adress, value);
                     break;
                 // ERAM
                 case 0xA000:
@@ -586,7 +677,8 @@ namespace mzmdbg
                 case 0x00: // GB Mode Only
                     _isColorGameBoy = false;
                     break;
-                case 0xC0: // GBC Mode Only
+                case 0xC0: // CGB Mode Only
+                case 0x80: // GB And CGB Modes, force fancy CGB
                     _isColorGameBoy = true;
                     break;
             }
@@ -633,7 +725,7 @@ namespace mzmdbg
             for (var i = 0x0134; i <= 0x014C; ++i)
                 checkSum = (ushort)((checkSum - romBuffer[i] - 1) & 0xFFFF);
             bool isChecksumValid = (checkSum & 0xFF) == romBuffer[0x014D];
-            MainForm.LogLine("Header Checksum: {0} ({1})", romBuffer[0x014D], (isChecksumValid ? "Valid" : "Invalid"));
+            MainForm.LogLine("Header Checksum: 0x{0:X2} ({1})", romBuffer[0x014D], (isChecksumValid ? "Valid" : "Invalid"));
 
             if (!isChecksumValid)
                 return;
@@ -661,7 +753,8 @@ namespace mzmdbg
         {
             switch (keyPressed)
             {
-                
+                default: // Just killing compiler warning for now
+                    break;
             }
         }
 
