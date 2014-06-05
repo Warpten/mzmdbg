@@ -69,7 +69,12 @@
     <Compile Include="DebuggerForm.Designer.cs">
       <DependentUpon>DebuggerForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="GBCEmulator.cs" />
+    <Compile Include="GBC\Clock.cs" />
+    <Compile Include="GBC\Enums.cs" />
+    <Compile Include="GBC\CPU.cs" />
+    <Compile Include="GBC\GPU.cs" />
+    <Compile Include="GBC\Memory.cs" />
+    <Compile Include="GBC\Registers.cs" />
     <Compile Include="MainForm.cs" />
     <Compile Include="MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
@@ -95,6 +100,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="GBC" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
