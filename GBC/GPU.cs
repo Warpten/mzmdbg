@@ -23,28 +23,14 @@ namespace mzmdbg.GBC
         private static bool IsDoubleSpeedGBC = false;
         private static bool IsColorGameBoy = false;
 
-        private static int _modeClock = 0;
-
         private static byte[] _oam;
-        public static byte[] OAM
-        {
-            get {
-                if (ModeFlag <= (byte)ModeFlags.VBlank)
-                    return _oam;
-                return null;
-            }
-        }
+        public static byte[] OAM { get { return (ModeFlag <= (byte)ModeFlags.VBlank) ? _oam : null; } }
  
         private static byte[] _vram; // 8KB GB, 16KB CGB
-        public static byte[] VRAM
-        {
-            get {
-                if (ModeFlag == (byte)ModeFlags.Transfer)
-                    return null;
-                return _vram;
-            }
-        }
+        public static byte[] VRAM { get { return (ModeFlag == (byte)ModeFlags.Transfer) ? null : _vram; } }
  
+        private static byte[] _registers;
+        
         /* Each tile is sized 8x8 pixels and has a color depth of 4 colors/gray shades.
          * Tiles can be displayed as part of the Background/Window map, and/or as OAM tiles
          * (foreground sprites). Note that foreground sprites may have only 3 colors,
@@ -60,9 +46,8 @@ namespace mzmdbg.GBC
 
         private static byte[,,] _pixelBuffer; // Used for on-screen rendering
  
-        private static List<Action> _lineControl = new List<Action>();
- 
-        private static byte[] _registers = new byte[0xF]; // Grossy over-estimated size
+        #region Register Helpers
+        private static int Clock;
         private static byte LCDC {
             get { return ReadRegister(0xFF40); }
             set { WriteRegister(0xFF40, value); }
@@ -84,23 +69,47 @@ namespace mzmdbg.GBC
             get { return ReadRegister(0xFF45); }
             set { WriteRegister(0xFF45, value); }
         }
-        private static byte WY   { get { return _registers[6]; } }
-        private static byte WX   { get { return _registers[7]; } }
+        private static byte WY {
+            get { return ReadRegister(0xFF46); }
+            set { WriteRegister(0xFF46, value); }
+        }
+        private static byte WX {
+            get { return ReadRegister(0xFF47); }
+            set { WriteRegister(0xFF47, value); }
+        }
         // private static byte BGP  { get { return _registers[8]; } }
         // private static byte OBP0 { get { return _registers[9]; } }
         // private static byte OBP1 { get { return _registers[10]; } }
+        #endregion
  
+        #region STAT Register Helpers
         private static byte ModeFlag {
             get { return (byte)((STAT & 1) | (STAT & 2)); }
             set { STAT = (byte)(((STAT >> 4) << 4) | value); }
         }
  
-        public static bool OamInterrupt    = false;
-        public static bool VBlankInterrupt = false;
-        public static bool HBlankInterrupt = false;
-        public static bool CoincidenceInterrupt = false;
+        public static bool OamInterrupt {
+            get { return (STAT & (1 << 5)) != 0; }
+            set { if (value) WriteRegisterBit(0xFF41, 5); else ClearRegisterBit(0xFF41, 5); }
+        }
+        public static bool VBlankInterrupt {
+            get { return (STAT & (1 << 4)) != 0; }
+            set { if (value) WriteRegisterBit(0xFF41, 4); else ClearRegisterBit(0xFF41, 4); }
+        }
+        public static bool HBlankInterrupt {
+            get { return (STAT & (1 << 3)) != 0; }
+            set { if (value) WriteRegisterBit(0xFF41, 3); else ClearRegisterBit(0xFF41, 3); }
+        }
+        public static bool CoincidenceInterrupt {
+            get { return (STAT & (1 << 2)) != 0; }
+            set { if (value) WriteRegisterBit(0xFF41, 2); else ClearRegisterBit(0xFF41, 2); }
+        }
+        #endregion
  
-        private static bool _lcdEnabled = true;
+        private static bool _lcdEnabled = false;
+        private static bool _bgEnabled  = false;
+        private static bool _objEnabled = false;
+        private static bool _winEnabled = false;
  
         /// <summary>
         /// Defines the control that renders the game and initializes
@@ -117,133 +126,41 @@ namespace mzmdbg.GBC
             _oam = new byte[160]; 
             Buffer.BlockCopy(romBuffer, 0x8000, _vram, 0, 8192);
             Buffer.BlockCopy(romBuffer, 0xFE00, _oam, 0, 160);
- 
-
+            
+            STAT = 0;
+            ModeFlag = (byte)ModeFlags.OAM;
+            LYC = 0;
+            SCX = 0;
+            SCY = 0;
+            WX = 0;
+            WY = 0;
+            
+            // Graphics initialization
             _pixelBuffer = new byte[160,144,3];
-
             ctrl.MakeCurrent(); // Make it current for OpenGL
- 
-            // Clear renderer and trigger invalidation to update display.
             GL.ClearColor(Color.White);
             ctrl.Invalidate();
- 
-            InitializeLineControl();
         }
 
-        public static byte ReadRegister(int addr)
+        public static void WriteRegisterBit(int addr, int bitIndex)
         {
-            return _registers[addr - 0xFF40];
+            _registers[addr - 0xFF40] |= (byte)(1 << bitIndex);
+        }
+        
+        public static void ClearRegisterBit(int addr, int bitIndex)
+        {
+            _registers[addr - 0xFF40] &= (byte)(~(1 << bitIndex));
         }
  
         public static void WriteRegister(int addr, byte value)
         {
             addr -= 0xFF40;
             _registers[addr] = value;
-            if (addr == 1) // STAT
-            {
-                CoincidenceInterrupt = (addr & 0x40) != 0;
-                OamInterrupt = (addr & 0x20) != 0;
-                VBlankInterrupt = (addr & 0x10) != 0;
-                HBlankInterrupt = (addr & 0x80) != 0;
-                _registers[addr] = value & 0x78;
-            }
-            else if (addr == 0) // LCD Control
-            {
-                var toggleLCD = value > 0x7F; // Bit 7 - LCD Display Enable
-                if (_lcdEnabled != toggleLCD)
-                {
-                    _lcdEnabled = toggleLCD;
-                    _registers[1] &= 0x78;
-                    if (_lcdEnabled)
-                    {
-                        ModeFlag = 2;
-                        EnableLCD();
-                    }
-                    else
-                    {
-                        ModeFlag = 0;
-                        DisableLCD();
-                    }
- 
-                }
-            }
-            else if (addr == 6) // DMA
-            {
-                if (value >= 0xE0)
-                    return;
-            }
         }
- 
-        public static void InitializeLineControl() // initializeLCDController 
+        
+        public static byte ReadRegister(int addr)
         {
-            var currentLine = 0;
-            while (currentLine < 154)
-            {
-                if (currentLine < 143)
-                {
-                    _lineControl.Add(
-                        delegate() {
-                            if (_modeClock < 20)
-                                ScanLineOAM();
-                            else if (_modeClock < 63) // Should be 43 according to Step()
-                                ScanLineVRAM();
-                            else if (_modeClock < 114)
-                                ScanLineHBlank();
-                            else
-                            {
-                                _modeClock -= 114;
-                                if (LY == LYC)
-                                {
-                                    // TODO Trigger interrupt, STAT coincidence
-                                }
-                                // Also execute HDMA here
-                                ModeFlag = 2; // Enter OAM read
-                            }
-                    });
-                }
-                else if (currentLine == 143)
-                {
-                    _lineControl.Add(
-                        delegate() {
-                            if (_modeClock < 20)
-                                ScanLineOAM();
-                            else if (_modeClock < 63) // Should be 43 according to Step()
-                                ScanLineVRAM();
-                            else if (_modeClock < 114)
-                                ScanLineHBlank();
-                            else
-                            {
-                                _modeClock -= 114;
- 
-                                if (LY == LYC)
-                                {
-                                    // TODO Trigger interrupt, STAT coincidence
-                                }
-                                // Also execute HDMA here
-                                ModeFlag = 1; // Enter VBLANK
-                                _lineControl[144].Invoke();
-                            }
-                    });
-                }
-                else if (currentLine < 153)
-                {
-                    _lineControl.Add(
-                        delegate() {
-                            if (_modeClock < 114)
-                                return;
- 
-                            _modeClock -= 114;
-                            ++LYC;
-                            if (LY == LYC)
-                            {
-                                // TODO Trigger interrupt, STAT coincidence
-                            }
-                            ModeFlag = 2; // OAM Read
-                            _lineControl[LYC].Invoke();
-                    });
-                }
-                ++currentLine;
-            }
+            return _registers[addr];
         }
  
         public static void Reset()
@@ -252,6 +169,8 @@ namespace mzmdbg.GBC
  
         public static void RenderScan()
         {
+            ModeFlag = 0;
+            Clock = 0;
         }
  
         public static void RenderToScreen()
@@ -279,11 +198,11 @@ namespace mzmdbg.GBC
  
         public static void Step()
         {
-            _modeClock += GBCRegisters.M;
+            Clock += GBCRegisters.M;
             switch (ModeFlag)
             {
                 case 0: // HBLANK
-                    if (_modeClock < 51)
+                    if (Clock < 51)
                         break;
 
                     // Last line, enter VBLANK and draw
@@ -291,29 +210,25 @@ namespace mzmdbg.GBC
                         RenderToScreen();
                     else
                         ModeFlag = 2;
-                    _modeClock = 0;
+                    Clock = 0;
                     ++LYC;
                     break;
                 case 2: // OAM Read Mode
-                    if (_modeClock > 20)
+                    if (Clock > 20)
                     {
                         ModeFlag = 3;
-                        _modeClock = 0;
+                        Clock = 0;
                     }
                     break;
                 case 3: // VRAM Read Mode
-                    if (_modeClock >= 43)
-                    {
-                        ModeFlag = 0;
-                        _modeClock = 0;
+                    if (Clock >= 43)
                         RenderScan();
-                    }
                     break;
                 case 1: // VBLANK
-                    if (_modeClock < 114)
+                    if (Clock < 114)
                         break;
 
-                    _modeClock = 0;
+                    Clock = 0;
                     LYC++;
                     if (LYC >= 153)
                     {
